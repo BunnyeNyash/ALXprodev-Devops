@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Define constants
+API_URL="https://pokeapi.co/api/v2/pokemon/pikachu"
+OUTPUT_FILE="data.json"
+ERROR_LOG="errors.txt"
+
+# Function to log errors with timestamp
+log_error() {
+    local error_message="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): $error_message" >> "$ERROR_LOG"
+}
+
+# Trap errors and exit cleanly
+trap 'log_error "An error occurred. Exiting..."; exit 1' ERR
+
+# Check if curl is installed
+if ! command -v curl &> /dev/null; then
+    log_error "curl is not installed. Please install curl to proceed."
+    exit 1
+fi
+
+# Make API request and save response
+response=$(curl -s -w "%{http_code}" -o "$OUTPUT_FILE" "$API_URL")
+http_code="${response: -3}"
+
+# Check if request was successful (HTTP 200)
+if [ "$http_code" -eq 200 ]; then
+    echo "Pikachu data successfully saved to $OUTPUT_FILE"
+else
+    log_error "Failed to fetch Pikachu data. HTTP status code: $http_code"
+    rm -f "$OUTPUT_FILE" # Remove incomplete output file
+    exit 1
+fi
+
+# Verify that the output file exists and is not empty
+if [ ! -s "$OUTPUT_FILE" ]; then
+    log_error "Output file $OUTPUT_FILE is empty or does not exist."
+    exit 1
+fi
+
+exit 0
