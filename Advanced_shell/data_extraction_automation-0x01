@@ -26,8 +26,8 @@ fi
 
 # Extract data using jq
 name=$(jq -r '.name' "$INPUT_FILE" | sed 's/\b\(.\)/\u\1/')
-height=$(jq -r '.height' "$INPUT_FILE" | awk '{printf "%.1f", $1/10}')
-weight=$(jq -r '.weight' "$INPUT_FILE" | awk '{printf "%.1f", $1/10}')
+height=$(jq -r '.height' "$INPUT_FILE" | awk '{printf ($1 % 10 == 0) ? "%d" : "%.1f", $1/10}')
+weight=$(jq -r '.weight' "$INPUT_FILE" | awk '{printf ($1 % 10 == 0) ? "%d" : "%.1f", $1/10}')
 type=$(jq -r '.types[0].type.name' "$INPUT_FILE" | sed 's/\b\(.\)/\u\1/')
 
 # Check if all required fields were extracted
@@ -37,6 +37,8 @@ if [ -z "$name" ] || [ -z "$height" ] || [ -z "$weight" ] || [ -z "$type" ]; the
 fi
 
 # Format and output the result
-echo "$name is of type $type, weighs ${weight}kg, and is ${height}m tall."
+formatted_height="$height"
+formatted_weight="$weight"
+echo "$name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall."
 
 exit 0
