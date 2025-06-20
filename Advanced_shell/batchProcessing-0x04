@@ -7,6 +7,7 @@ ERROR_LOG="errors.txt"
 POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
 DELAY=0.5 # Short delay in seconds for parallel requests to avoid rate-limiting
 MAX_JOBS=5 # Maximum number of parallel jobs (equal to number of Pokémon)
+TIMEOUT=10 # Timeout in seconds for each background job
 
 # Function to log errors with timestamp
 log_error() {
@@ -16,6 +17,9 @@ log_error() {
 
 # Trap errors and exit cleanly
 trap 'log_error "An error occurred. Exiting..."; exit 1' ERR
+
+# Trap exit to ensure all background processes are killed
+trap 'kill $(jobs -p) 2>/dev/null' EXIT
 
 # Check if curl is installed
 if ! command -v curl &> /dev/null; then
@@ -61,16 +65,20 @@ for pokemon in "${POKEMON_LIST[@]}"; do
         sleep 0.1 # Wait briefly before checking again
     done
 
-    # Start fetching in the background
-    fetch_pokemon_data "$pokemon" &
-    pids+=($!) # Store the process ID
+    # Start fetching in the background with timeout
+    (
+        fetch_pokemon_data "$pokemon" &
+        pid=$!
+        sleep "$TIMEOUT" && kill "$pid" 2>/dev/null && log_error "Timeout: Killed process (PID $pid) for $pokemon after $TIMEOUT seconds."
+    ) &
+    pids+=($!) # Store the parent process ID
     sleep "$DELAY" # Short delay to avoid overwhelming the API
 done
 
 # Wait for all background jobs to complete
 for pid in "${pids[@]}"; do
     wait "$pid" || {
-        log_error "Background job (PID $pid) failed."
+        log_error "Background job (PID $pid) failed or was terminated."
     }
 done
 
