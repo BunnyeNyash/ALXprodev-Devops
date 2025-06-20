@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Define input file
+INPUT_FILE="data.json"
+
+# Function to log errors with timestamp
+log_error() {
+    local error_message="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): $error_message" >> "errors.txt"
+}
+
+# Trap errors and exit cleanly
+trap 'log_error "An error occurred. Exiting..."; exit 1' ERR
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+    log_error "jq is not installed. Please install jq to proceed."
+    exit 1
+fi
+
+# Check if input file exists and is not empty
+if [ ! -s "$INPUT_FILE" ]; then
+    log_error "Input file $INPUT_FILE does not exist or is empty."
+    exit 1
+fi
+
+# Extract data using jq
+name=$(jq -r '.name' "$INPUT_FILE" | sed 's/\b\(.\)/\u\1/')
+height=$(jq -r '.height' "$INPUT_FILE" | awk '{printf "%.1f", $1/10}')
+weight=$(jq -r '.weight' "$INPUT_FILE" | awk '{printf "%.1f", $1/10}')
+type=$(jq -r '.types[0].type.name' "$INPUT_FILE" | sed 's/\b\(.\)/\u\1/')
+
+# Check if all required fields were extracted
+if [ -z "$name" ] || [ -z "$height" ] || [ -z "$weight" ] || [ -z "$type" ]; then
+    log_error "Failed to extract all required fields from $INPUT_FILE."
+    exit 1
+fi
+
+# Format and output the result
+echo "$name is of type $type, weighs ${weight}kg, and is ${height}m tall."
+
+exit 0
