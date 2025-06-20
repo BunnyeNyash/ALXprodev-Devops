@@ -6,6 +6,7 @@ OUTPUT_DIR="pokemon_data"
 ERROR_LOG="errors.txt"
 POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
 DELAY=2 # Delay in seconds between requests to avoid rate-limiting
+MAX_RETRIES=3 # Maximum number of retry attempts for failed requests
 
 # Function to log errors with timestamp
 log_error() {
@@ -30,30 +31,47 @@ if [ ! -d "$OUTPUT_DIR" ]; then
     }
 fi
 
+# Function to fetch Pokémon data with retry logic
+fetch_pokemon_data() {
+    local pokemon="$1"
+    local output_file="$OUTPUT_DIR/$pokemon.json"
+    local attempt=1
+    local success=0
+    local http_code
+    local response
+
+    echo "Fetching data for $pokemon..."
+
+    while [ $attempt -le $MAX_RETRIES ]; do
+        # Make API request and capture HTTP status code
+        response=$(curl -s -w "%{http_code}" -o "$output_file" "$API_BASE_URL/$pokemon" 2>> "$ERROR_LOG")
+        http_code="${response: -3}"
+
+        # Check if request was successful (HTTP 200)
+        if [ "$http_code" -eq 200 ] && [ -s "$output_file" ]; then
+            echo "Saved data to $output_file ✅"
+            success=1
+            break
+        else
+            log_error "Attempt $attempt failed for $pokemon. HTTP status code: $http_code"
+            rm -f "$output_file" # Remove incomplete output file
+            if [ $attempt -lt $MAX_RETRIES ]; then
+                echo "Retrying ($((attempt + 1))/$MAX_RETRIES) for $pokemon..."
+                sleep "$DELAY"
+            fi
+        fi
+        ((attempt++))
+    done
+
+    if [ $success -eq 0 ]; then
+        log_error "Failed to fetch data for $pokemon after $MAX_RETRIES attempts."
+    fi
+}
+
 # Loop through the list of Pokémon
 for pokemon in "${POKEMON_LIST[@]}"; do
-    echo "Fetching data for $pokemon..."
-    output_file="$OUTPUT_DIR/$pokemon.json"
-    
-    # Make API request and capture HTTP status code
-    response=$(curl -s -w "%{http_code}" -o "$output_file" "$API_BASE_URL/$pokemon")
-    http_code="${response: -3}"
-
-    # Check if request was successful (HTTP 200)
-    if [ "$http_code" -eq 200 ]; then
-        # Verify that the output file is not empty
-        if [ -s "$output_file" ]; then
-            echo "Saved data to $output_file ✅"
-        else
-            log_error "Output file $output_file is empty for $pokemon."
-            rm -f "$output_file"
-        fi
-    else
-        log_error "Failed to fetch data for $pokemon. HTTP status code: $http_code"
-        rm -f "$output_file" # Remove incomplete output file
-    fi
-
-    # Add delay to avoid rate-limiting
+    fetch_pokemon_data "$pokemon"
+    # Add delay between Pokémon requests to avoid rate-limiting
     sleep "$DELAY"
 done
 
