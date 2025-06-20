@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# Define constants
+API_BASE_URL="https://pokeapi.co/api/v2/pokemon"
+OUTPUT_DIR="pokemon_data"
+ERROR_LOG="errors.txt"
+POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+DELAY=0.5 # Short delay in seconds for parallel requests to avoid rate-limiting
+MAX_JOBS=5 # Maximum number of parallel jobs (equal to number of Pokémon)
+
+# Function to log errors with timestamp
+log_error() {
+    local error_message="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): $error_message" >> "$ERROR_LOG"
+}
+
+# Trap errors and exit cleanly
+trap 'log_error "An error occurred. Exiting..."; exit 1' ERR
+
+# Check if curl is installed
+if ! command -v curl &> /dev/null; then
+    log_error "curl is not installed. Please install curl to proceed."
+    exit 1
+fi
+
+# Create output directory if it doesn't exist
+if [ ! -d "$OUTPUT_DIR" ]; then
+    mkdir -p "$OUTPUT_DIR" || {
+        log_error "Failed to create directory $OUTPUT_DIR."
+        exit 1
+    }
+fi
+
+# Function to fetch Pokémon data
+fetch_pokemon_data() {
+    local pokemon="$1"
+    local output_file="$OUTPUT_DIR/$pokemon.json"
+
+    echo "Fetching data for $pokemon..."
+
+    # Make API request and capture HTTP status code
+    response=$(curl -s -w "%{http_code}" -o "$output_file" "$API_BASE_URL/$pokemon" 2>> "$ERROR_LOG")
+    http_code="${response: -3}"
+
+    # Check if request was successful (HTTP 200)
+    if [ "$http_code" -eq 200 ] && [ -s "$output_file" ]; then
+        echo "Saved data to $output_file ✅"
+    else
+        log_error "Failed to fetch data for $pokemon. HTTP status code: $http_code"
+        rm -f "$output_file" # Remove incomplete output file
+    fi
+}
+
+# Track background jobs
+pids=()
+
+# Loop through the list of Pokémon and start background jobs
+for pokemon in "${POKEMON_LIST[@]}"; do
+    # Check if the number of running jobs equals MAX_JOBS
+    while [ $(jobs -r | wc -l) -ge "$MAX_JOBS" ]; do
+        sleep 0.1 # Wait briefly before checking again
+    done
+
+    # Start fetching in the background
+    fetch_pokemon_data "$pokemon" &
+    pids+=($!) # Store the process ID
+    sleep "$DELAY" # Short delay to avoid overwhelming the API
+done
+
+# Wait for all background jobs to complete
+for pid in "${pids[@]}"; do
+    wait "$pid" || {
+        log_error "Background job (PID $pid) failed."
+    }
+done
+
+exit 0
