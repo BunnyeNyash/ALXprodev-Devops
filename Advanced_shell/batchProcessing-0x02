@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Define constants
+API_BASE_URL="https://pokeapi.co/api/v2/pokemon"
+OUTPUT_DIR="pokemon_data"
+ERROR_LOG="errors.txt"
+POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+DELAY=2 # Delay in seconds between requests to avoid rate-limiting
+
+# Function to log errors with timestamp
+log_error() {
+    local error_message="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): $error_message" >> "$ERROR_LOG"
+}
+
+# Trap errors and exit cleanly
+trap 'log_error "An error occurred. Exiting..."; exit 1' ERR
+
+# Check if curl is installed
+if ! command -v curl &> /dev/null; then
+    log_error "curl is not installed. Please install curl to proceed."
+    exit 1
+fi
+
+# Create output directory if it doesn't exist
+if [ ! -d "$OUTPUT_DIR" ]; then
+    mkdir -p "$OUTPUT_DIR" || {
+        log_error "Failed to create directory $OUTPUT_DIR."
+        exit 1
+    }
+fi
+
+# Loop through the list of Pokémon
+for pokemon in "${POKEMON_LIST[@]}"; do
+    echo "Fetching data for $pokemon..."
+    output_file="$OUTPUT_DIR/$pokemon.json"
+    
+    # Make API request and capture HTTP status code
+    response=$(curl -s -w "%{http_code}" -o "$output_file" "$API_BASE_URL/$pokemon")
+    http_code="${response: -3}"
+
+    # Check if request was successful (HTTP 200)
+    if [ "$http_code" -eq 200 ]; then
+        # Verify that the output file is not empty
+        if [ -s "$output_file" ]; then
+            echo "Saved data to $output_file ✅"
+        else
+            log_error "Output file $output_file is empty for $pokemon."
+            rm -f "$output_file"
+        fi
+    else
+        log_error "Failed to fetch data for $pokemon. HTTP status code: $http_code"
+        rm -f "$output_file" # Remove incomplete output file
+    fi
+
+    # Add delay to avoid rate-limiting
+    sleep "$DELAY"
+done
+
+exit 0
